@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 import json, struct, tempfile, unittest, wave
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from unittest.mock import patch
 import sys
 

@@ -1364,3 +1364,9 @@ If you find our paper and code useful in your research, please consider giving a
 The Base-model demo can generate resumable sections with a growing preview, individual section regeneration and WAV export. See [setup, limits and tests](docs/long-text-projects.md).
 
 Base 模型演示可逐段生成并保存进度，支持动态预览、单段重新生成与 WAV 导出。详见[配置、限制和测试](docs/long-text-projects.md)。
+
+### Local launcher and preferences (本地启动器与偏好设置)
+
+Use `qwen-tts-local` for configurable English-only/bilingual UI, localhost start/stop, and process-local GPU/thread/token settings. See [setup and Linux process-identity guarantees](docs/local-launcher.md). No model downloads, desktop/autostart installation or system configuration changes occur automatically.
+
+可通过 `qwen-tts-local` 配置英文或双语界面、本机启动/停止，以及进程内 GPU、线程和令牌参数。详见[配置与 Linux 进程身份保证](docs/local-launcher.md)。不会自动下载模型、安装桌面或自动启动项，或修改系统配置。
