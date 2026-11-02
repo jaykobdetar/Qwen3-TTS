@@ -88,6 +88,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Model checkpoint path or HuggingFace repo id (optional if positional is provided).",
     )
 
+    parser.add_argument(
+        "--long-text-projects-dir",
+        default=None,
+        help="Enable local Base-model long-text projects in this directory (在此目录启用 Base 模型长文本项目). "
+             "Use only for a trusted local demo; projects are shared across browser sessions "
+             "(仅用于可信的本地演示；项目在浏览器会话之间共享).",
+    )
+
     # Model loading / from_pretrained args
     parser.add_argument(
         "--device",
@@ -251,7 +259,12 @@ def _detect_model_kind(ckpt: str, tts: Qwen3TTSModel) -> str:
         raise ValueError(f"Unknown Qwen-TTS model type: {mt}")
 
 
-def build_demo(tts: Qwen3TTSModel, ckpt: str, gen_kwargs_default: Dict[str, Any]) -> gr.Blocks:
+def build_demo(
+    tts: Qwen3TTSModel,
+    ckpt: str,
+    gen_kwargs_default: Dict[str, Any],
+    long_text_projects_dir: Optional[str] = None,
+) -> gr.Blocks:
     model_kind = _detect_model_kind(ckpt, tts)
 
     supported_langs_raw = None
@@ -589,6 +602,18 @@ Upload a previously saved voice file, then synthesize new text.
 """
         )
 
+    if long_text_projects_dir is not None:
+        if model_kind != "base":
+            raise ValueError("Long-text projects require a Base model (长文本项目需要 Base 模型).")
+        from .long_text.longtext_ui import add_long_text_ui
+
+        add_long_text_ui(demo, tts, long_text_projects_dir, gen_kwargs_default)
+        # All tabs share the model. Stop requests bypass the queue so they can
+        # take effect between sections of an in-progress generator callback.
+        for fn in demo.fns.values():
+            fn.concurrency_id = "qwen-long-text-model"
+            fn.concurrency_limit = 1
+
     return demo
 
 
@@ -599,6 +624,11 @@ def main(argv=None) -> int:
     if not args.checkpoint and not args.checkpoint_pos:
         parser.print_help()
         return 0
+
+    if args.long_text_projects_dir is not None:
+        import inspect
+        if "js_on_load" not in inspect.signature(gr.HTML).parameters:
+            raise ValueError("Long-text projects require Gradio >= 6.17 (长文本项目需要 Gradio 6.17 或更新版本).")
 
     ckpt = _resolve_checkpoint(args)
 
@@ -613,7 +643,7 @@ def main(argv=None) -> int:
     )
 
     gen_kwargs_default = _collect_gen_kwargs(args)
-    demo = build_demo(tts, ckpt, gen_kwargs_default)
+    demo = build_demo(tts, ckpt, gen_kwargs_default, args.long_text_projects_dir)
 
     launch_kwargs: Dict[str, Any] = dict(
         server_name=args.ip,
