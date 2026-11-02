@@ -10,11 +10,10 @@ tabs remain available.
 
 ## Run / 运行
 
-Install the package normally, with Gradio 6.17 or newer for this optional interface:
+Use Python 3.10 or newer. Install the package with Gradio 6.17 or newer for this optional interface:
 
 ```sh
-pip install -e .
-pip install 'gradio>=6.17'
+pip install -e '.[long-text]'
 qwen-tts-demo Qwen/Qwen3-TTS-12Hz-0.6B-Base \
   --ip 127.0.0.1 --no-share --no-flash-attn \
   --long-text-projects-dir ./tts-projects
@@ -138,3 +137,26 @@ voice profile, project files or personal absolute paths are included.
 
 ![Project creation with the supplied Icarus test text](images/long-text-project.png)
 ![Eight-section preview with section five highlighted](images/long-text-timeline.png)
+
+## Fork dependency baseline / 分支依赖基线
+
+This fork requires Torch and torchaudio >= 2.10.0 and Python >= 3.10. The
+[official PyTorch advisory](https://github.com/pytorch/pytorch/security/advisories/GHSA-63cw-57p8-fm3p)
+identifies CVE-2026-24747 in Torch <= 2.9.1, fixed in >= 2.10.0, including malicious
+checkpoints loaded with `weights_only=True`.
+
+The [official torchaudio compatibility table](https://docs.pytorch.org/audio/stable/installation.html)
+and PyPI metadata pair Torch 2.10.0 with torchaudio 2.10.0; both provide Python 3.12
+Linux x86-64 wheels. Torch 2.10.0 PyPI metadata declares CUDA 12.8 runtime packages
+on Linux x86-64. This is a **metadata compatibility check**, not a driver, CUDA,
+Transformers, FlashAttention or Qwen synthesis validation. The earlier real-model
+prototype test used Torch 2.8.0 / torchaudio 2.8.0; it does not establish that the
+patched pair works end-to-end. A fresh isolated patched-runtime smoke test is still
+required before calling this draft production-ready. No live installation was
+upgraded during PR preparation.
+
+本分支要求 Torch 与 torchaudio 至少为 2.10.0，Python 至少为 3.10。官方公告指出
+Torch 2.9.1 及以下版本存在 CVE-2026-24747，2.10.0 起已修复。已核对官方配对表和
+软件包元数据，但尚未在修补后的运行环境中验证驱动、CUDA、Transformers、FlashAttention
+或完整 Qwen 合成。早期原型使用 2.8.0，不能证明新配对的端到端兼容性。发布草稿期间未
+升级正在运行的本地安装。仅加载可信、自行创建的音色文件仍然是必要的使用限制。
