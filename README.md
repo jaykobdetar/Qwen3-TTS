@@ -1359,3 +1359,8 @@ If you find our paper and code useful in your research, please consider giving a
 
 
 <br>
+### Optional long-text projects (可选长文本项目)
+
+The Base-model demo can generate resumable sections with a growing preview, individual section regeneration and WAV export. See [setup, limits and tests](docs/long-text-projects.md).
+
+Base 模型演示可逐段生成并保存进度，支持动态预览、单段重新生成与 WAV 导出。详见[配置、限制和测试](docs/long-text-projects.md)。

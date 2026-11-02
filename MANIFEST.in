@@ -2,6 +2,7 @@ global-exclude *
 
 recursive-include qwen_tts *.py *.pyi py.typed
 recursive-include qwen_tts *.npz
+recursive-include qwen_tts/cli/long_text *.js
 
 include LICENSE
 include MANIFEST.in

@@ -43,4 +43,4 @@ packages = { find = { where = ["."] , include = ["qwen_tts*"] } }
 include-package-data = true
 
 [tool.setuptools.package-data]
-qwen_tts = ["py.typed", "**/*.npz"]
+qwen_tts = ["py.typed", "**/*.npz", "cli/long_text/*.js"]

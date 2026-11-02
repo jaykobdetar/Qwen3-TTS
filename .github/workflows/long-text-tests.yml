@@ -1,0 +1,45 @@
+name: Long-text offline tests
+
+on:
+  pull_request:
+    paths:
+      - 'qwen_tts/cli/**'
+      - 'tests/long_text/**'
+      - 'pyproject.toml'
+      - 'MANIFEST.in'
+      - '.github/workflows/long-text-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'qwen_tts/cli/**'
+      - 'tests/long_text/**'
+      - 'pyproject.toml'
+      - 'MANIFEST.in'
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m pip install 'gradio==6.17.3' numpy soundfile build
+      - run: python -m unittest discover -s tests/long_text -p 'test_*.py'
+      - run: python tests/long_text/check_ui.py
+      - run: node tests/long_text/test_preview.js
+      - run: python -m build --wheel
+      - name: Verify packaged timeline
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          with ZipFile(next(Path('dist').glob('*.whl'))) as wheel:
+              assert 'qwen_tts/cli/long_text/longtext_preview.js' in wheel.namelist()
+          PY
