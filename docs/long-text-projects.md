@@ -21,10 +21,9 @@ qwen-tts-demo Qwen/Qwen3-TTS-12Hz-0.6B-Base \
 
 Use an existing local checkpoint path instead of the model ID for offline use.
 Without `--long-text-projects-dir`, the demo's existing behavior is unchanged.
-The directory is explicit and portable; no machine-specific launcher, resource
-watchdog or GPU allocation settings are included. When enabled, all tabs use one
+The directory is explicit and portable. The optional [local launcher and preferences](local-launcher.md) provide configurable English-only/bilingual UI, process-local GPU/thread/token settings, and identity-checked start/stop without machine-specific paths. When enabled, all tabs use one
 shared model queue with concurrency 1. Sampling options from the demo still apply;
-long-text generation uses 256 new tokens per section (nominally about 20 seconds
+long-text generation defaults to 256 new tokens per section (configurable with `--long-text-max-new-tokens`) (nominally about 20 seconds
 with the 12 Hz tokenizer), not a guaranteed speech duration.
 
 如需离线使用，请将模型 ID 换成已有的本地检查点路径。不指定该参数时，演示行为不变。
@@ -102,13 +101,13 @@ python tests/long_text/check_ui.py
 node tests/long_text/test_preview.js
 ```
 
-The 30 backend tests cover sentence splitting, ordering, interrupted recovery,
+The 30 project-backend tests cover sentence splitting, ordering, interrupted recovery,
 stop/resume, single-section replacement, stale revisions/exports, failed gaps,
 sample-rate mismatch, truncation and disk-write failures. Twelve JavaScript checks
 cover playback reconciliation and stable selection/time mapping. The Gradio check
 constructs the actual bilingual demo and exercises callbacks with a stub model,
 including the shared queue, stop bypass, growing preview and natural-EOS capture.
-These checks do not assess actual speech quality.
+An additional 17 configuration/launcher tests cover preference validation, resource settings, startup handshakes, inherited locks, identity mismatch refusal, exact-process stopping and lightweight imports. The Gradio check also verifies English-only labels while retaining Chinese synthesis and user text, and a configurable 128-token budget. These checks do not assess actual speech quality.
 
 A local English-only prototype of the same workflow was tested with the 0.6B Base
 model: two short sections, selected-section text edit/regeneration, unchanged
@@ -128,7 +127,7 @@ are contributor checks and user testing, not maintainer review or upstream appro
 ## User-supplied prototype screenshots / 用户提供的原型截图
 
 These show the English-only local prototype used for manual testing. The fork's
-new UI is bilingual and the prefix-export label is now **Export completed audio
+new UI supports bilingual or English-only text and the prefix-export label is now **Export completed audio
 so far**. Screenshots intentionally show the user's supplied test text; no audio,
 voice profile, project files or personal absolute paths are included.
 

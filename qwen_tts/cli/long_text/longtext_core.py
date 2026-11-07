@@ -3,18 +3,22 @@
 
 import json, os, re, shutil, threading, uuid, wave, hashlib
 from pathlib import Path
+from qwen_tts_local.language import translator
 
 MAX_TEXT = 2_000_000
 RESERVE = 128 * 1024 * 1024
 
 
-def split_text(text, limit=140):
+def split_text(text, limit=140, ui_language="bilingual"):
+    tr = translator(ui_language)
     text = text.strip()
     if not text:
-        raise ValueError("Enter some text first. (请先输入文本。)")
+        raise ValueError(tr("Enter some text first. (请先输入文本。)"))
     if len(text) > MAX_TEXT:
         raise ValueError(
-            "Use separate projects for inputs over 2 million characters. (超过两百万字符的输入请拆分为多个项目。)"
+            tr(
+                "Use separate projects for inputs over 2 million characters. (超过两百万字符的输入请拆分为多个项目。)"
+            )
         )
     chunks = []
     # Sentence/paragraph boundaries first; long sentences split at whitespace or character boundaries.
@@ -48,7 +52,9 @@ def section(text, depth=0):
 
 
 class Projects:
-    def __init__(self, root):
+    def __init__(self, root, ui_language="bilingual"):
+        self.ui_language = ui_language
+        self.tr = translator(ui_language)
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.stops = {}
@@ -56,13 +62,15 @@ class Projects:
 
     def path(self, pid):
         if not re.fullmatch("[0-9a-f]{32}", pid or ""):
-            raise ValueError("Select a local project. (请选择本地项目。)")
+            raise ValueError(self.tr("Select a local project. (请选择本地项目。)"))
         return self.root / pid
 
     def space(self, extra=0):
         if shutil.disk_usage(self.root).free < RESERVE + extra:
             raise OSError(
-                "Not enough free disk space. Free space, then resume; existing clips are retained. (磁盘空间不足。请释放空间后继续；已有音频会保留。)"
+                self.tr(
+                    "Not enough free disk space. Free space, then resume; existing clips are retained. (磁盘空间不足。请释放空间后继续；已有音频会保留。)"
+                )
             )
 
     @staticmethod
@@ -85,27 +93,29 @@ class Projects:
     def load(self, pid):
         p = json.loads((self.path(pid) / "manifest.json").read_text(encoding="utf-8"))
         if p.get("id") != pid or p.get("version") != 1:
-            raise ValueError("Unsupported project manifest. (不支持此项目清单。)")
+            raise ValueError(
+                self.tr("Unsupported project manifest. (不支持此项目清单。)")
+            )
         for s in p["sections"]:
             if not re.fullmatch("[0-9a-f]{32}", s["id"]):
-                raise ValueError("Invalid section ID. (段落标识无效。)")
+                raise ValueError(self.tr("Invalid section ID. (段落标识无效。)"))
             if s.get("clip") and not re.fullmatch(
                 r"[0-9a-f]{32}-[0-9a-f]{32}\.wav", s["clip"]
             ):
-                raise ValueError("Invalid clip path. (音频路径无效。)")
+                raise ValueError(self.tr("Invalid clip path. (音频路径无效。)"))
             if s["status"] == "generating":
                 s["status"] = "pending"
-                s["error"] = (
+                s["error"] = self.tr(
                     "Interrupted previously; resume to retry. (上次生成已中断，请继续以重试。)"
                 )
             if s["status"] == "ready":
                 try:
                     with wave.open(str(self.path(pid) / s["clip"]), "rb") as w:
                         if w.getnframes() == 0:
-                            raise ValueError("Empty clip (音频为空)")
+                            raise ValueError(self.tr("Empty clip (音频为空)"))
                 except Exception:
                     s["status"] = "error"
-                    s["error"] = (
+                    s["error"] = self.tr(
                         "Missing or invalid clip; regenerate this section. (音频缺失或无效，请重新生成此段落。)"
                     )
         if p.get("assembly", {}).get("sources") != self.assembly_sources(p):
@@ -129,11 +139,13 @@ class Projects:
     def create(
         self, title, text, language, reference=None, transcript="", profile=None
     ):
-        chunks = split_text(text)
+        chunks = split_text(text, ui_language=self.ui_language)
         self.space()
         if not profile and (not reference or not transcript.strip()):
             raise ValueError(
-                "Supply a saved voice file, or reference audio and its transcript. (请提供已保存的音色文件，或参考音频及其准确文本。)"
+                self.tr(
+                    "Supply a saved voice file, or reference audio and its transcript. (请提供已保存的音色文件，或参考音频及其准确文本。)"
+                )
             )
         p = dict(
             version=1,
@@ -159,7 +171,9 @@ class Projects:
         self.path(pid)
         with self.lock:
             self.stops.setdefault(pid, threading.Event()).set()
-        return "Stop requested. The current section will finish; completed clips are saved. (已请求停止。当前段落完成后停止，已完成音频会保存。)"
+        return self.tr(
+            "Stop requested. The current section will finish; completed clips are saved. (已请求停止。当前段落完成后停止，已完成音频会保存。)"
+        )
 
     def event(self, pid):
         with self.lock:
@@ -169,17 +183,23 @@ class Projects:
         p = self.load(pid)
         s = next(s for s in p["sections"] if s["id"] == sid)
         if not text.strip():
-            raise ValueError("Section text cannot be empty. (段落文本不能为空。)")
+            raise ValueError(
+                self.tr("Section text cannot be empty. (段落文本不能为空。)")
+            )
         if len(text) > 1000:
             raise ValueError(
-                "Keep an edited section under 1,000 characters; use Split selected for shorter parts. (编辑后的段落应少于一千字符；可拆分所选段落以缩短。)"
+                self.tr(
+                    "Keep an edited section under 1,000 characters; use Split selected for shorter parts. (编辑后的段落应少于一千字符；可拆分所选段落以缩短。)"
+                )
             )
         if text.strip() != s["text"]:
             s.update(
                 text=text.strip(),
                 status="pending",
                 clip=None,
-                error="Text changed; regenerate before assembling. (文本已更改，请先重新生成再合并。)",
+                error=self.tr(
+                    "Text changed; regenerate before assembling. (文本已更改，请先重新生成再合并。)"
+                ),
             )
             self.save(p)
         return p
@@ -188,10 +208,14 @@ class Projects:
         p = self.load(pid)
         i = next(i for i, s in enumerate(p["sections"]) if s["id"] == sid)
         s = p["sections"][i]
-        parts = split_text(s["text"], max(10, len(s["text"]) // 2))
+        parts = split_text(
+            s["text"], max(10, len(s["text"]) // 2), ui_language=self.ui_language
+        )
         if len(parts) < 2:
             raise ValueError(
-                "Section is too short to split further. (此段落过短，无法继续拆分。)"
+                self.tr(
+                    "Section is too short to split further. (此段落过短，无法继续拆分。)"
+                )
             )
         p["sections"][i : i + 1] = [section(t, s["depth"] + 1) for t in parts]
         self.save(p)
@@ -214,7 +238,7 @@ class Projects:
                 self.space(4 * 1024 * 1024)
                 s.update(status="generating", error="")
                 self.save(p)
-                yield p, "Generating section  (正在生成段落)" + str(i + 1)
+                yield p, self.tr("Generating section  (正在生成段落)") + str(i + 1)
                 clip = self.path(pid) / (s["id"] + "-" + uuid.uuid4().hex + ".wav")
                 # synthesize writes a PCM WAV and returns True only if natural end-of-speech was observed.
                 natural = synthesize(p, s, clip)
@@ -225,7 +249,9 @@ class Projects:
                         or w.getsampwidth() != 2
                     ):
                         raise ValueError(
-                            "Generated audio is empty or not mono PCM16. (生成的音频为空或不是单声道 PCM16。)"
+                            self.tr(
+                                "Generated audio is empty or not mono PCM16. (生成的音频为空或不是单声道 PCM16。)"
+                            )
                         )
                     duration = w.getnframes() / w.getframerate()
                 s.update(
@@ -235,7 +261,9 @@ class Projects:
                     error=(
                         ""
                         if natural
-                        else "No confirmed natural ending; possible token-limit truncation. Split shorter or regenerate. (未确认自然结束，可能因令牌上限截断。请拆短或重新生成。)"
+                        else self.tr(
+                            "No confirmed natural ending; possible token-limit truncation. Split shorter or regenerate. (未确认自然结束，可能因令牌上限截断。请拆短或重新生成。)"
+                        )
                     ),
                 )
                 # Preserve the suspect clip on disk; automatically retry smaller parts only during bulk generation.
@@ -246,15 +274,21 @@ class Projects:
                     and s["depth"] < 3
                     and not event.is_set()
                 ):
-                    parts = split_text(s["text"], max(20, len(s["text"]) // 2))
+                    parts = split_text(
+                        s["text"],
+                        max(20, len(s["text"]) // 2),
+                        ui_language=self.ui_language,
+                    )
                     p["sections"][i : i + 1] = [
                         section(t, s["depth"] + 1) for t in parts
                     ]
                     self.save(p)
-                    yield p, "Possible truncation: retrying smaller sections. (可能被截断，正在拆分为更短段落后重试。)"
+                    yield p, self.tr(
+                        "Possible truncation: retrying smaller sections. (可能被截断，正在拆分为更短段落后重试。)"
+                    )
                     continue
                 self.save(p)
-                yield p, "Saved section  (已保存段落)" + str(i + 1)
+                yield p, self.tr("Saved section  (已保存段落)") + str(i + 1)
                 if not natural:
                     break
             except Exception as e:
@@ -263,20 +297,24 @@ class Projects:
                 s.update(old)
                 if old["status"] != "ready":
                     s["status"] = "error"
-                s["error"] = "Generation failed (生成失败): " + str(e)
+                s["error"] = self.tr("Generation failed (生成失败): ") + str(e)
                 try:
                     self.save(p)
                 except OSError:
                     pass
-                yield p, "Paused after error:  (出错后暂停：)" + str(e)
+                yield p, self.tr("Paused after error:  (出错后暂停：)") + str(e)
                 return
             if only:
                 break
             i += 1
         yield p, (
-            "Stopped after current section. Resume when ready. (当前段落完成后已停止，可随时继续。)"
+            self.tr(
+                "Stopped after current section. Resume when ready. (当前段落完成后已停止，可随时继续。)"
+            )
             if event.is_set()
-            else "Generation pass finished. Review statuses before assembling. (本轮生成结束，请检查各段落状态后再合并。)"
+            else self.tr(
+                "Generation pass finished. Review statuses before assembling. (本轮生成结束，请检查各段落状态后再合并。)"
+            )
         )
 
     @staticmethod
@@ -290,7 +328,9 @@ class Projects:
         s = next((x for x in p["sections"] if x["id"] == sid), None)
         if s is None or self.section_revision(s) != revision:
             raise ValueError(
-                "This section changed. Reload the project and select it again before editing. (此段落已更改，请重新加载项目并再次选择后编辑。)"
+                self.tr(
+                    "This section changed. Reload the project and select it again before editing. (此段落已更改，请重新加载项目并再次选择后编辑。)"
+                )
             )
         return p, s
 
@@ -311,7 +351,9 @@ class Projects:
                             or w.getsampwidth() != 2
                             or w.getnframes() == 0
                         ):
-                            raise ValueError("Invalid preview audio (预览音频无效)")
+                            raise ValueError(
+                                self.tr("Invalid preview audio (预览音频无效)")
+                            )
                         duration = w.getnframes() / w.getframerate()
                     start = elapsed
                     elapsed += duration
@@ -351,18 +393,24 @@ class Projects:
         rows = p["sections"][:count]
         if not rows:
             raise ValueError(
-                "No completed contiguous prefix is available yet. (尚无从开头连续完成的音频。)"
+                self.tr(
+                    "No completed contiguous prefix is available yet. (尚无从开头连续完成的音频。)"
+                )
             )
         if any(s["status"] != "ready" for s in rows):
             raise ValueError(
-                "Every section must be ready. Resolve pending/error/possible-truncation sections first. (所有段落必须就绪，请先处理未完成、错误或可能截断的段落。)"
+                self.tr(
+                    "Every section must be ready. Resolve pending/error/possible-truncation sections first. (所有段落必须就绪，请先处理未完成、错误或可能截断的段落。)"
+                )
             )
         files = [self.path(pid) / s["clip"] for s in rows]
         total = sum(f.stat().st_size for f in files)
         self.space(total)
         if total > 3_900_000_000:
             raise ValueError(
-                "Combined WAV would exceed the supported WAV size. Divide this project into smaller projects. (合并后的 WAV 将超出支持的大小，请拆分项目。)"
+                self.tr(
+                    "Combined WAV would exceed the supported WAV size. Divide this project into smaller projects. (合并后的 WAV 将超出支持的大小，请拆分项目。)"
+                )
             )
         final = self.path(pid) / (
             ("preview-" if prefix else "assembled-") + uuid.uuid4().hex + ".wav"
@@ -381,7 +429,9 @@ class Projects:
                             out.setframerate(fmt[2])
                         if fmt != current:
                             raise ValueError(
-                                "Section sample rates/formats differ. Regenerate mismatching sections; no silent resampling. (段落采样率或格式不一致，请重新生成不匹配的段落；不会自动重采样。)"
+                                self.tr(
+                                    "Section sample rates/formats differ. Regenerate mismatching sections; no silent resampling. (段落采样率或格式不一致，请重新生成不匹配的段落；不会自动重采样。)"
+                                )
                             )
                         while True:
                             block = w.readframes(65536)

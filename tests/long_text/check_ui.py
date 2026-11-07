@@ -3,6 +3,9 @@
 
 import ast, tempfile, types, sys
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import gradio as gr
 import numpy as np
 
@@ -62,7 +65,9 @@ module = FeatureImport().visit(module)
 sys.modules["long_text.longtext_ui"] = types.SimpleNamespace(
     add_long_text_ui=ns["add_long_text_ui"]
 )
-base = {"gr": gr}
+from qwen_tts_local.language import translator
+
+base = {"gr": gr, "translator": translator}
 exec(compile(ast.fix_missing_locations(module), str(original), "exec"), base)
 fake = types.SimpleNamespace(
     model=types.SimpleNamespace(
@@ -201,4 +206,53 @@ with tempfile.TemporaryDirectory() as d:
     assert Path(assembly(pid)[0]).is_file()
     print(
         "Real Gradio construction, single queue/stop bypass, loaded-project state, custom events, growing prefix, cached URLs, stale selection refusal, EOS capture and assembly passed. No model/server loaded."
+    )
+
+# The English preference changes application text, never script content or the
+# synthesis language values. Exercise the configurable section budget as well.
+with tempfile.TemporaryDirectory() as d:
+    demo = base["build_demo"](fake, "stub-model", {}, Path(d), "en", 128)
+    cfg = demo.get_config_file()
+    for component in cfg["components"]:
+        props = component["props"]
+        for key in ("label", "placeholder", "html_template"):
+            if isinstance(props.get(key), str):
+                assert not any("\u3400" <= ch <= "\u9fff" for ch in props[key]), (
+                    key,
+                    props[key],
+                )
+        if component["type"] in ("button", "markdown") and isinstance(
+            props.get("value"), str
+        ):
+            assert not any("\u3400" <= ch <= "\u9fff" for ch in props["value"]), props[
+                "value"
+            ]
+    assert any("Chinese" in str(c["props"].get("choices")) for c in cfg["components"])
+    ref = Path(d) / "voice.pt"
+    ref.write_bytes(b"stub")
+    create = next(fn.fn for fn in demo.fns.values() if fn.name == "create_cb")
+    result = create("Test", "保留用户的中文。", "Chinese", None, "", str(ref))
+    view = json.loads(result[2])
+    assert view["rows"][0]["text"] == "保留用户的中文。"
+    assert not any("\u3400" <= ch <= "\u9fff" for ch in view["labels"]["heading"])
+    calls = []
+
+    def custom_budget(**kwargs):
+        calls.append(kwargs)
+        fake.model.talker.generate(eos_token_id=99)
+        return [np.ones(240, dtype=np.float32) * 0.1], 24000
+
+    fake.generate_voice_clone = custom_budget
+    run = next(fn.fn for fn in demo.fns.values() if fn.name == "run_cb")
+    list(run(result[5]))
+    assert calls[0]["max_new_tokens"] == 128 and calls[0]["language"] == "Chinese"
+    assert calls[0]["text"] == "保留用户的中文。"
+    try:
+        create("Test", "", "English", None, "", str(ref))
+    except gr.Error as e:
+        assert not any("\u3400" <= ch <= "\u9fff" for ch in str(e))
+    else:
+        raise AssertionError("Expected empty-text error")
+    print(
+        "English UI, preserved Chinese synthesis/text, translated errors and configurable 128-token section budget passed."
     )
